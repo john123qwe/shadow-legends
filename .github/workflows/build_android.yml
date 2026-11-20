@@ -111,7 +111,30 @@ jobs:
           echo "Checking APK..."
           unzip -t "$APK"
           echo "APK validation successful."
+
   
+      - name: Diagnose APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
+          TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+
+          echo "===== APK SIZE ====="
+          ls -lh "$APK"
+
+          echo "===== ZIP VALIDATION ====="
+          unzip -tq "$APK"
+
+          echo "===== SIGNATURE VALIDATION ====="
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
+
+          echo "===== APK ANDROID INFO ====="
+          "$TOOLS/aapt" dump badging "$APK" | head -n 20
+
+          echo "===== APK DIAGNOSTICS COMPLETED ====="
+
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
