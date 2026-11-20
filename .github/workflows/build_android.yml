@@ -118,14 +118,25 @@ jobs:
 
           echo "Android template installation completed."
 
-
+      
       - name: Build Bazaar APK
+        shell: bash
+        timeout-minutes: 60
         run: |
+          set -euo pipefail
+
           mkdir -p "$PROJECT_DIR/build"
-          godot --headless --path "$PROJECT_DIR" \
+
+          godot --headless --verbose \
+            --path "$PROJECT_DIR" \
+            --install-android-build-template \
             --export-debug "shadow_legends_bazaar" \
             "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
+
           test -s "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
+
+          ls -lh "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
+
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
