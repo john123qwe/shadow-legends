@@ -88,8 +88,8 @@ jobs:
         run: |
           godot --headless --path "$PROJECT_DIR" --import
           godot --headless --path "$PROJECT_DIR" --script tests/run_checks.gd
-
-     
+   
+      
       - name: Install Android build template
         shell: bash
         timeout-minutes: 15
@@ -98,20 +98,21 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          if [[ ! -f android/build.gradle && ! -f android/build.gradle.kts ]]; then
+          if [[ ! -f android/build/build.gradle && ! -f android/build/build.gradle.kts ]]; then
             timeout 12m godot --headless --editor --verbose \
               --path "$PROJECT_DIR" \
               --install-android-build-template \
               --quit
           fi
 
-          if [[ ! -f android/build.gradle && ! -f android/build.gradle.kts ]]; then
-            echo "::error::Android build template was not generated."
-            find android -maxdepth 4 -type f -print || true
+          if [[ ! -f android/build/build.gradle && ! -f android/build/build.gradle.kts ]]; then
+            echo "::error::Android Gradle template was not generated."
+            echo "Android directory contents:"
+            find android -maxdepth 5 -type f -print || true
             exit 1
           fi
 
-          echo "Android build template is ready."
+          echo "Android Gradle template is ready."
 
 
       - name: Build Bazaar APK
