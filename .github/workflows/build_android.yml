@@ -20,10 +20,9 @@ jobs:
             echo "Game ZIP not found"
             exit 1
           fi
-          mkdir -p project
-          unzip -q "$ZIP_FILE" -d project
-          test -f project/project.godot
-          echo "PROJECT_DIR=$GITHUB_WORKSPACE/project" >> $GITHUB_ENV
+          unzip -q "$ZIP_FILE" -d .
+          test -f project.godot
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Set up Java
         uses: actions/setup-java@v4
