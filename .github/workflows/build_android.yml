@@ -4,23 +4,40 @@ name: Build SHADOW LEGENDS APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Bazaar APK
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
+    env:
+      GODOT_VERSION: "4.3"
+      ANDROID_API_LEVEL: "34"
+      ANDROID_BUILD_TOOLS: "34.0.0"
+      EXPORT_PRESET: "shadow_legends_bazaar"
+
     steps:
+      # 1. Download repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Locate and extract the game project
       - name: Locate and extract game ZIP
+        shell: bash
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)
+          set -euo pipefail
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' | sort | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "Game ZIP not found"
+            echo "::error::Game ZIP not found in repository root."
             exit 1
           fi
+
+          echo "Using archive: $ZIP_FILE"
 
           mkdir -p extracted
           unzip -oq "$ZIP_FILE" -d extracted
@@ -28,83 +45,211 @@ jobs:
           PROJECT_FILE=$(find extracted -type f -name project.godot -print -quit)
 
           if [ -z "$PROJECT_FILE" ]; then
-            echo "project.godot not found"
+            echo "::error::project.godot not found inside ZIP."
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_FILE")
-          echo "PROJECT_DIR=$GITHUB_WORKSPACE/$PROJECT_DIR" >> "$GITHUB_ENV"
+          PROJECT_DIR="$(dirname "$PROJECT_FILE")"
 
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE/$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "APK_PATH=$GITHUB_WORKSPACE/$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk" >> "$GITHUB_ENV"
+
+          echo "Project directory: $PROJECT_DIR"
+
+      # 3. Install Java
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-          
+          java-version: "17"
+
+      # 4. Install Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: |
             platform-tools
+            platforms;android-34
+            build-tools;34.0.0
 
-      - name: Install Android SDK components
-        run: |
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
+      # 5. Download Godot
       - name: Download Godot 4.3
+        shell: bash
         run: |
+          set -euo pipefail
+
           wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+
           unzip -q Godot_v4.3-stable_linux.x86_64.zip
           chmod +x Godot_v4.3-stable_linux.x86_64
+
           sudo mv Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
 
-      - name: Install Godot export templates
-        run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
-          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
-          unzip -q Godot_v4.3-stable_export_templates.tpz -d templates
-          cp -r templates/templates/* "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          godot --version
 
-      - name: Configure Android signing
+      # 6. Install matching Godot export templates
+      - name: Install Godot export templates
+        shell: bash
         run: |
-          mkdir -p "$HOME/.config/godot" "$HOME/.local/share/godot/keystores"
-          keytool -genkeypair -v \
-            -keystore "$HOME/.local/share/godot/keystores/debug.keystore" \
-            -storepass android -alias androiddebugkey \
-            -keypass android -keyalg RSA -keysize 2048 \
+          set -euo pipefail
+
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+
+          mkdir -p "$TEMPLATE_DIR"
+          mkdir -p godot_templates
+
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+
+          unzip -q Godot_v4.3-stable_export_templates.tpz -d godot_templates
+
+          if [ ! -d godot_templates/templates ]; then
+            echo "::error::Godot export template archive has an unexpected structure."
+            exit 1
+          fi
+
+          cp -r godot_templates/templates/. "$TEMPLATE_DIR/"
+
+          if [ ! -f "$TEMPLATE_DIR/android_source.zip" ]; then
+            echo "::error::Android source template not found."
+            exit 1
+          fi
+
+          echo "Godot export templates installed."
+
+      # 7. Configure Android debug signing
+      - name: Configure Android signing
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          KEYSTORE="$HOME/.local/share/godot/keystores/debug.keystore"
+
+          mkdir -p "$HOME/.config/godot"
+          mkdir -p "$(dirname "$KEYSTORE")"
+
+          keytool -genkeypair -noprompt -v \
+            -keystore "$KEYSTORE" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
-          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
+
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
+
           [resource]
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/debug_keystore = "$HOME/.local/share/godot/keystores/debug.keystore"
+          export/android/debug_keystore = "$KEYSTORE"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
 
+      # 8. Import and validate project
       - name: Import and validate project
+        shell: bash
         run: |
-          godot --headless --path "$PROJECT_DIR" --import
-          godot --headless --path "$PROJECT_DIR" --script tests/run_checks.gd
+          set -euo pipefail
 
-      - name: Install Android build template
-        run: |
-          godot --headless --path "$PROJECT_DIR" --install-android-build-template
+          cd "$PROJECT_DIR"
 
-      - name: Build Bazaar APK
-        run: |
-          mkdir -p "$PROJECT_DIR/build"
+          if [ ! -f project.godot ]; then
+            echo "::error::Project file is missing."
+            exit 1
+          fi
+
+          if [ ! -f tests/run_checks.gd ]; then
+            echo "::error::tests/run_checks.gd is missing."
+            exit 1
+          fi
+
+          godot --headless --path "$PROJECT_DIR" --editor --import
+
           godot --headless --path "$PROJECT_DIR" \
-            --export-debug "shadow_legends_bazaar" \
-            "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
-          test -s "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
+            --script tests/run_checks.gd
 
+      # 9. Verify Android export preset
+      - name: Verify Android export preset
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PRESET_FILE="$PROJECT_DIR/export_presets.cfg"
+
+          if [ ! -f "$PRESET_FILE" ]; then
+            echo "::error::export_presets.cfg not found."
+            exit 1
+          fi
+
+          if ! grep -Fq "name=\"$EXPORT_PRESET\"" "$PRESET_FILE"; then
+            echo "::error::Export preset '$EXPORT_PRESET' not found."
+            echo "Available presets:"
+            grep -E '^name=' "$PRESET_FILE" || true
+            exit 1
+          fi
+
+          echo "Export preset verified: $EXPORT_PRESET"
+
+      # 10. Install Android build template
+      - name: Install Android build template
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          if [ -f android/build.gradle ] || [ -f android/build.gradle.kts ]; then
+            echo "Android Gradle project already exists."
+          else
+            echo "Installing Android build template..."
+
+            timeout 12m godot \
+              --headless \
+              --verbose \
+              --path "$PROJECT_DIR" \
+              --install-android-build-template
+          fi
+
+          if [ ! -f android/build.gradle ] && [ ! -f android/build.gradle.kts ]; then
+            echo "::error::Android Gradle build template was not installed correctly."
+            find android -maxdepth 3 -type f 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Android build template is ready."
+
+      # 11. Build Bazaar APK
+      - name: Build Bazaar APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$PROJECT_DIR/build"
+
+          godot \
+            --headless \
+            --verbose \
+            --path "$PROJECT_DIR" \
+            --export-debug "$EXPORT_PRESET" \
+            "$APK_PATH"
+
+          if [ ! -s "$APK_PATH" ]; then
+            echo "::error::APK was not generated."
+            exit 1
+          fi
+
+          echo "APK successfully generated."
+          ls -lh "$APK_PATH"
+
+      # 12. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SHADOW-LEGENDS-APK
-          path: project/build/SHADOW_LEGENDS_Bazaar.apk
+          name: SHADOW-LEGENDS-BAZAAR-APK
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
           retention-days: 14
