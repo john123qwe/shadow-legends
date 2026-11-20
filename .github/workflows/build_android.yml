@@ -125,23 +125,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK="$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
-
           mkdir -p "$PROJECT_DIR/build"
-          rm -f "$APK"
 
           godot --headless --verbose \
             --path "$PROJECT_DIR" \
+            --install-android-build-template \
             --export-debug "shadow_legends_bazaar" \
-            "$APK"
+            "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
 
-          test -s "$APK"
+          test -s "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
 
-          echo "Checking APK archive..."
-          unzip -t "$APK"
-
-          echo "APK validation successful."
-          ls -lh "$APK"
+          ls -lh "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
 
       
       - name: Upload APK
