@@ -136,13 +136,14 @@ jobs:
           test -s "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
 
           ls -lh "$PROJECT_DIR/build/SHADOW_LEGENDS_Bazaar.apk"
-
+  
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SHADOW-LEGENDS-APK
-          path: ${{ env.APK_PATH }}
+          path: extracted/build/SHADOW_LEGENDS_Bazaar.apk
           if-no-files-found: error
           retention-days: 14
+
 
