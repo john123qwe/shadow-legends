@@ -89,30 +89,34 @@ jobs:
           godot --headless --path "$PROJECT_DIR" --import
           godot --headless --path "$PROJECT_DIR" --script tests/run_checks.gd
    
-      
+           
       - name: Install Android build template
         shell: bash
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: |
           set -euo pipefail
 
-          cd "$PROJECT_DIR"
+          TEMPLATE_ZIP="$HOME/.local/share/godot/export_templates/4.3.stable/android_source.zip"
+          BUILD_DIR="$PROJECT_DIR/android/build"
 
-          if [[ ! -f android/build/build.gradle && ! -f android/build/build.gradle.kts ]]; then
-            timeout 12m godot --headless --editor --verbose \
-              --path "$PROJECT_DIR" \
-              --install-android-build-template \
-              --quit
-          fi
-
-          if [[ ! -f android/build/build.gradle && ! -f android/build/build.gradle.kts ]]; then
-            echo "::error::Android Gradle template was not generated."
-            echo "Android directory contents:"
-            find android -maxdepth 5 -type f -print || true
+          if [[ ! -s "$TEMPLATE_ZIP" ]]; then
+            echo "::error::Godot Android source template ZIP not found."
             exit 1
           fi
 
-          echo "Android Gradle template is ready."
+          mkdir -p "$BUILD_DIR"
+
+          unzip -oq "$TEMPLATE_ZIP" -d "$BUILD_DIR"
+
+          echo "Extracted Android template files:"
+          find "$BUILD_DIR" -maxdepth 3 -type f | head -80
+
+          if [[ ! -f "$BUILD_DIR/build.gradle" && ! -f "$BUILD_DIR/build.gradle.kts" ]]; then
+            echo "::error::Gradle build template files were not found after extraction."
+            exit 1
+          fi
+
+          echo "Android build template installed successfully."
 
 
       - name: Build Bazaar APK
